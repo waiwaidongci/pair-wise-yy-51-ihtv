@@ -26,5 +26,8 @@
         "serve": {"builder": "@angular/build:dev-server", "configurations": {"production": {"buildTarget": "rail-route-workbench:build:production"}, "development": {"buildTarget": "rail-route-workbench:build:development"}}, "defaultConfiguration": "development"}
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }
