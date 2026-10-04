@@ -7,21 +7,24 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatInputModule } from '@angular/material/input'
 import { MatSelectModule } from '@angular/material/select'
 import { MatTabsModule } from '@angular/material/tabs'
+import { MatChipsModule } from '@angular/material/chips'
 import { RouteState } from '../store/route.reducer'
 import * as RouteActions from '../store/route.actions'
-import type { RoutePackage } from '../types'
+import type { ReviewComment, RoutePackage } from '../types'
 
 @Component({
   selector: 'app-approval',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatTabsModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatTabsModule, MatChipsModule],
   template: `
     <main class="page">
-      <div class="page-head"><div><p class="eyebrow">安全 · 运营 · 应急会签</p><h1>逐区段审批与退回</h1><p>每条意见锚定运输区段，原记录不可覆盖，所有确认写入审计时间线。</p></div><button mat-flat-button color="primary" (click)="lockBaseline()">确认并锁定基线</button></div>
+      <div class="page-head"><div><p class="eyebrow">安全 · 运营 · 应急会签</p><h1>逐区段审批与退回</h1><p>每条意见锚定运输区段与路线版本，原记录不可覆盖；路线版本升级后旧意见标记待重新会签。</p></div><div class="head-actions"><mat-chip highlighted>当前版本 v{{ selectedRouteVersion }}</mat-chip><button mat-flat-button color="primary" (click)="lockBaseline()">确认并锁定基线</button></div></div>
+      @if (hasStaleComments) { <div class="notice notice-warn"><b>路线版本已升级</b>：部分会签意见基于旧版本，需按 v{{ selectedRouteVersion }} 重新确认。</div> }
       <mat-tab-group>
         <mat-tab label="待处理意见"><section class="card comment-list">
           @for (comment of (state$ | async)?.comments || []; track comment.id) {
-            <div class="comment"><div class="comment-head"><div><b>{{comment.role}} · {{comment.author}}</b><small>{{comment.segmentId}} · {{comment.id}}</small></div><span>{{comment.status}}</span></div><p>{{comment.content}}</p>
+            <div class="comment"><div class="comment-head"><div><b>{{comment.role}} · {{comment.author}}</b><small>{{comment.segmentId}} · {{comment.id}} · v{{comment.version}}</small></div><span>{{comment.status}}</span></div><p>{{comment.content}}</p>
+              @if (isStale(comment)) { <div class="stale">基于旧版本 v{{comment.version}} · 待重新会签（当前 v{{ selectedRouteVersion }}）</div> }
             <div class="actions"><button mat-stroked-button color="warn" (click)="resolve(comment.id,'已退回')">退回补件</button><button mat-flat-button color="primary" (click)="resolve(comment.id,'已接受')">接受条件</button></div></div>
           }
         </section></mat-tab>
@@ -40,17 +43,44 @@ import type { RoutePackage } from '../types'
   `,
   styles: [`
     h2{margin:0}.comment-list{padding:0}.comment{padding:18px;border-bottom:1px solid #e7ebf1}.comment-head{display:flex;justify-content:space-between}.comment-head small{display:block;color:#7a8798;margin-top:4px}.comment p{color:#475569}.actions{display:flex;gap:10px}.actions button{margin:8px 8px 0 0}.form-card{max-width:780px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.two mat-form-field,.wide{width:100%}.timeline{padding:8px 18px}.timeline>div{position:relative;padding:14px 10px 14px 28px;border-left:2px solid #cbd5e1}.timeline i{position:absolute;width:9px;height:9px;border-radius:50%;background:#2563eb;left:-5.5px;top:20px}.timeline p{color:#7a8798;margin:5px 0 0}
+    .head-actions{display:flex;align-items:center;gap:10px}.notice{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:12px}.notice-warn b{margin-right:6px}.stale{margin-top:6px;padding:6px 10px;background:#fffbeb;border-left:3px solid #d97706;color:#92400e;font-size:12px;border-radius:0 4px 4px 0}
     @media(max-width:620px){.two{grid-template-columns:1fr}}
   `],
 })
 export class ApprovalComponent {
   private readonly store = inject(Store<{ routes: RouteState }>)
-  readonly state$ = this.store.select('routes')
+  readonly state$ = this.store.select((state: { routes: RouteState }) => state.routes)
   role = '安全'
   segmentId = 'S-203'
   content = ''
   segments: RouteState['routes'][number]['segments'] = []
-  constructor() { this.state$.subscribe((state) => { this.segments = state.routes.flatMap((route: RoutePackage) => route.segments) }) }
+  selectedRouteVersion = 1
+  private selectedRouteId = ''
+  constructor() {
+    this.state$.subscribe((state) => {
+      this.segments = state.routes.flatMap((route: RoutePackage) => route.segments)
+      this.selectedRouteId = state.selectedRouteId
+      this.selectedRouteVersion = state.routes.find((route) => route.id === state.selectedRouteId)?.version ?? 1
+    })
+  }
+  get hasStaleComments(): boolean {
+    let stale = false
+    this.state$.subscribe((state) => {
+      stale = state.comments.some((comment) => {
+        const route = state.routes.find((item) => item.id === comment.routeId)
+        return !!route && comment.version < route.version
+      })
+    }).unsubscribe()
+    return stale
+  }
+  isStale(comment: ReviewComment): boolean {
+    let stale = false
+    this.state$.subscribe((state) => {
+      const route = state.routes.find((item) => item.id === comment.routeId)
+      stale = !!route && comment.version < route.version
+    }).unsubscribe()
+    return stale
+  }
   addComment() { this.store.dispatch(RouteActions.addComment({ comment: { id: `RV-${Date.now().toString().slice(-4)}`, segmentId: this.segmentId, role: this.role, author: '当前审阅人', content: this.content, status: '待确认' } })); this.content = '' }
   resolve(id: string, status: '已接受' | '已退回') { this.store.dispatch(RouteActions.resolveComment({ id, status })) }
   lockBaseline() { alert('基线已锁定：审批意见、路径版本和原始附件将只读保存。') }

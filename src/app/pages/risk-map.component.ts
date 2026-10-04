@@ -27,14 +27,14 @@ import * as RouteActions from '../store/route.actions'
       <div class="grid-2">
         <div #mapEl class="map"></div>
         <aside class="card">
-          <div class="panel-head"><div><h2>区段风险清单</h2><p>已按风险等级排序</p></div><strong [class.risk-high]="selectedRoute !== undefined && selectedRoute.score >= 70">总风险 {{selectedRoute?.score}}</strong></div>
+          <div class="panel-head"><div><h2>区段风险清单</h2><p>已按风险等级排序 · 与工作台、审批页同一版本 v{{selectedRoute?.version ?? 1}}</p></div><strong [class.risk-high]="selectedRoute !== undefined && selectedRoute.score >= 70">总风险 {{selectedRoute?.score}}</strong></div>
           @for (segment of selectedRoute?.segments || []; track segment.id) {
             <button class="segment" [class.active]="segment.id === selectedSegmentId" (click)="selectSegment(segment)">
               <span><b>{{segment.name}}</b><small>{{segment.from}} → {{segment.to}} · {{segment.km}} km · {{segment.speed}}</small><em>{{segment.risks.join(' / ')}}</em></span><strong [class.risk-high]="segment.level==='高'" [class.risk-mid]="segment.level==='中'" [class.risk-low]="segment.level==='低'">{{segment.level}}</strong>
             </button>
           }
           <mat-divider />
-          <h3>路径测算</h3><p>实测里程：{{routeLength}} km</p><p>预计运行：{{estimatedTime}}</p><p>限制区段：{{restrictedCount}} 处</p>
+          <h3>路径测算</h3><p>实测里程：{{routeLength}} km（按 v{{selectedRoute?.version ?? 1}} 坐标重算，无直线补齐）</p><p>预计运行：{{estimatedTime}}</p><p>限制区段：{{restrictedCount}} 处</p>
           <button mat-flat-button color="primary" style="width:100%" (click)="requireAlternative()">要求补充绕行方案</button>
         </aside>
       </div>
@@ -47,7 +47,7 @@ import * as RouteActions from '../store/route.actions'
 export class RiskMapComponent implements AfterViewInit, OnDestroy {
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>
   private readonly store = inject(Store<{ routes: RouteState }>)
-  readonly state$ = this.store.select('routes')
+  readonly state$ = this.store.select((state: { routes: RouteState }) => state.routes)
   private map?: MapLibreMap
   selectedRouteId = ''
   selectedSegmentId = ''
